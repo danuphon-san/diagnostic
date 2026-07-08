@@ -4,6 +4,7 @@ This module provides advanced statistical analysis for IC time series,
 including autocorrelation-robust significance tests and decay analysis.
 """
 
+import warnings
 from typing import TYPE_CHECKING, Any, Union, cast
 
 import numpy as np
@@ -69,9 +70,10 @@ def compute_ic_hac_stats(
     ic_series: Union[pl.DataFrame, pd.DataFrame, "NDArray[Any]"],
     ic_col: str = "ic",
     maxlags: int | None = None,
+    label_horizon: int | None = None,
     kernel: str = "bartlett",
     use_correction: bool = True,
-) -> dict[str, float]:
+) -> dict[str, float | int]:
     """Compute HAC-adjusted significance statistics for IC time series.
 
     Uses Newey-West HAC (Heteroskedasticity and Autocorrelation Consistent)
@@ -92,7 +94,12 @@ def compute_ic_hac_stats(
     maxlags : int | None, default None
         Maximum lag for HAC adjustment. If None, uses Newey-West formula:
         maxlags = floor(4 * (T/100)^(2/9))
-        where T is the sample size
+        where T is the sample size. For overlapping forward-return labels,
+        pass ``label_horizon`` so the lag is at least ``label_horizon - 1``.
+    label_horizon : int | None, default None
+        Forward-return horizon used to build the IC series. If provided and
+        ``maxlags`` is None, the HAC lag is
+        ``max(label_horizon - 1, Newey-West auto)`` capped at ``T // 2``.
     kernel : str, default "bartlett"
         Kernel function for lag weighting:
         - "bartlett": Triangular kernel (Newey-West default)
@@ -146,10 +153,15 @@ def compute_ic_hac_stats(
     The Newey-West automatic lag selection formula is:
         maxlags = floor(4 * (T/100)^(2/9))
 
+    For overlapping h-period forward-return labels, the lag should be at least
+    h-1 because overlap mechanically induces MA(h-1) serial dependence in the
+    daily IC series. Pass ``label_horizon=h`` to use this horizon-aware
+    bandwidth.
+
     For example:
     - T=100 -> maxlags=4
-    - T=252 -> maxlags=5
-    - T=500 -> maxlags=6
+    - T=252 -> maxlags=4
+    - T=500 -> maxlags=5
 
     References
     ----------
@@ -195,13 +207,21 @@ def compute_ic_hac_stats(
     naive_se = np.sqrt(naive_var / n)  # Standard error of mean
     naive_t_stat = mean_ic / naive_se if naive_se > 0 else np.nan
 
-    # Determine optimal lags if not specified
     if maxlags is None:
-        # Newey-West automatic lag selection formula
-        # maxlags = floor(4 * (T/100)^(2/9))
-        maxlags = int(np.floor(4 * (n / 100) ** (2 / 9)))
-        maxlags = max(1, maxlags)  # At least 1 lag
-        maxlags = min(maxlags, n // 2)  # No more than T/2
+        if label_horizon is None:
+            warnings.warn(
+                "compute_ic_hac_stats() was called without label_horizon; "
+                "using the sample-size Newey-West lag only. For overlapping "
+                "forward-return labels, pass label_horizon so HAC bandwidth is "
+                "at least horizon - 1.",
+                UserWarning,
+                stacklevel=2,
+            )
+            maxlags = _newey_west_lag(n)
+        else:
+            maxlags = _newey_west_lag(n, label_horizon)
+    else:
+        maxlags = max(0, min(int(maxlags), n // 2))
 
     # Fit OLS model: IC ~ constant (testing if mean IC != 0)
     # This is equivalent to a one-sample t-test
@@ -248,6 +268,14 @@ def compute_ic_hac_stats(
         "naive_se": float(naive_se),
         "naive_t_stat": float(naive_t_stat),
     }
+
+
+def _newey_west_lag(n: int, horizon: int | None = None) -> int:
+    """Return Newey-West lag, optionally floored by overlapping-label horizon."""
+    nw_auto = int(np.floor(4 * (max(n, 1) / 100) ** (2 / 9)))
+    nw_auto = max(1, nw_auto)
+    base = max(int(horizon) - 1, nw_auto) if horizon is not None else nw_auto
+    return max(1, min(base, max(1, n // 2)))
 
 
 def _get_kernel_weights(kernel: str):

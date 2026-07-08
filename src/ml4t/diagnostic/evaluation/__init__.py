@@ -63,6 +63,17 @@ from .trade_shap_diagnostics import (  # noqa: F401
     TradeShapExplanation,
     TradeShapResult,
 )
+from .uncertainty import (  # noqa: F401
+    BacktestUncertaintyResult,
+    PairedUncertaintyResult,
+    RealityCheckResult,
+    SelectionAdjustmentResult,
+    compute_backtest_uncertainty,
+    compute_paired_uncertainty,
+    compute_reality_check,
+    compute_selection_adjustment,
+    pick_block_length,
+)
 from .validated_cv import (  # noqa: F401
     ValidatedCrossValidation,
     ValidationFoldResult,
@@ -139,6 +150,15 @@ __all__: list[str] = [
     "MultiSignalAnalysis",
     "MultiSignalSummary",
     "ComparisonResult",
+    "BacktestUncertaintyResult",
+    "PairedUncertaintyResult",
+    "RealityCheckResult",
+    "SelectionAdjustmentResult",
+    "pick_block_length",
+    "compute_backtest_uncertainty",
+    "compute_paired_uncertainty",
+    "compute_selection_adjustment",
+    "compute_reality_check",
     # Namespaces and dashboard entry points
     "create_evaluation_dashboard",
     "stats",

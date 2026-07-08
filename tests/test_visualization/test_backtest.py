@@ -10,13 +10,16 @@ Comprehensive tests for backtest tearsheet visualizations including:
 
 from __future__ import annotations
 
+import warnings
+from types import SimpleNamespace
+
 import numpy as np
 import plotly.graph_objects as go
 import polars as pl
 import pytest
+
 from ml4t.backtest import BacktestResult
 from ml4t.backtest.types import Fill, OrderSide, Trade
-
 from ml4t.diagnostic.integration import BacktestReportMetadata
 
 # =============================================================================
@@ -351,6 +354,30 @@ class TestTradePlots:
         for color_by in ["pnl", "exit_reason", "symbol", None]:
             fig = plot_mfe_mae_scatter(sample_trades, color_by=color_by)
             assert isinstance(fig, go.Figure)
+
+    def test_plot_mfe_mae_scatter_handles_missing_excursions_without_infinite_edge_ratio(self):
+        """All-missing MFE/MAE should render an explicit placeholder."""
+        from ml4t.diagnostic.visualization.backtest import plot_mfe_mae_scatter
+
+        trades = pl.DataFrame(
+            {
+                "mfe": [float("nan")] * 5,
+                "mae": [float("nan")] * 5,
+                "pnl": [10.0, -5.0, 3.0, 0.0, 2.0],
+                "exit_reason": ["time"] * 5,
+            }
+        )
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            fig = plot_mfe_mae_scatter(trades)
+
+        assert isinstance(fig, go.Figure)
+        assert not caught
+        assert len(fig.data) == 0
+        assert "MFE/MAE not available" in fig.layout.annotations[0].text
+        annotation_text = " ".join(annotation.text for annotation in fig.layout.annotations)
+        assert "inf" not in annotation_text.lower()
 
     def test_plot_exit_reason_breakdown_sunburst(self, sample_trades):
         """Test exit reason sunburst chart."""
@@ -1063,6 +1090,36 @@ class TestEdgeCases:
         except ValueError as e:
             # Acceptable to raise ValueError for empty data
             assert "empty" in str(e).lower() or "no" in str(e).lower()
+
+    def test_position_count_from_intraday_daily_flat_trades_uses_event_timeline(self):
+        """Trades opened and closed on the same date should not collapse to zero exposure."""
+        from datetime import datetime
+
+        from ml4t.diagnostic.visualization.backtest.tearsheet import (
+            _build_position_count_from_trades,
+        )
+
+        trades = pl.DataFrame(
+            {
+                "entry_time": [
+                    datetime(2025, 10, 23, 10, 15),
+                    datetime(2025, 10, 23, 11, 30),
+                    datetime(2025, 10, 24, 9, 45),
+                ],
+                "exit_time": [
+                    datetime(2025, 10, 23, 10, 28),
+                    datetime(2025, 10, 23, 11, 51),
+                    datetime(2025, 10, 24, 10, 3),
+                ],
+            }
+        )
+
+        fig = _build_position_count_from_trades(SimpleNamespace(trades=trades, theme="default"))
+
+        assert isinstance(fig, go.Figure)
+        trace = fig.data[0]
+        assert trace.line.shape == "hv"
+        assert list(trace.y) == [1, 0, 1, 0, 1, 0]
 
     def test_single_trade(self, sample_trades):
         """Test handling of single trade."""

@@ -16,6 +16,7 @@ import pytest
 
 from ml4t.diagnostic.metrics.ic_inference import (
     _get_kernel_weights,
+    _newey_west_lag,
     compute_ic_hac_stats,
 )
 
@@ -95,19 +96,29 @@ class TestHACMathematicalCorrectness:
         """Verify Newey-West automatic lag selection formula: floor(4*(T/100)^(2/9))."""
         test_cases = [
             (100, 4),  # T=100 -> 4
-            (252, 5),  # T=252 -> 5 (typical trading year)
-            (500, 6),  # T=500 -> 6
-            (1000, 7),  # T=1000 -> 7
+            (252, 4),  # T=252 -> 4 (typical trading year)
+            (500, 5),  # T=500 -> 5
+            (1000, 6),  # T=1000 -> 6
         ]
 
-        for n, _expected_lags in test_cases:
+        for n, expected_lags in test_cases:
             ic_series = np.random.randn(n) * 0.02
 
-            result = compute_ic_hac_stats(ic_series)
+            result = compute_ic_hac_stats(ic_series, maxlags=None, label_horizon=None)
 
-            # Allow for the min/max clipping in the implementation
-            assert result["effective_lags"] >= 1, "Should have at least 1 lag"
-            assert result["effective_lags"] <= n // 2, "Should not exceed T/2"
+            assert result["effective_lags"] == expected_lags
+
+    def test_label_horizon_floors_automatic_lag_for_overlapping_returns(self):
+        """Overlapping h-period labels require HAC bandwidth of at least h-1."""
+        ic_series = np.random.randn(4989) * 0.02
+
+        result = compute_ic_hac_stats(ic_series, label_horizon=63)
+
+        assert result["effective_lags"] == 62
+
+    def test_newey_west_lag_caps_horizon_floor_at_half_sample(self):
+        """Horizon-aware lag selection still respects the T/2 cap."""
+        assert _newey_west_lag(20, horizon=63) == 10
 
 
 class TestKernelWeights:

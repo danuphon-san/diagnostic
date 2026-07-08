@@ -1598,27 +1598,38 @@ def _build_position_count_from_trades(ctx: _SectionContext) -> go.Figure | None:
     if entry_col is None or exit_col is None:
         return None
 
-    entries = trades[entry_col].cast(pl.Date, strict=False).drop_nulls()
-    exits = trades[exit_col].cast(pl.Date, strict=False).drop_nulls()
+    entries = trades.select(
+        pl.col(entry_col).cast(pl.Datetime("us"), strict=False).alias("timestamp")
+    ).drop_nulls()
+    exits = trades.select(
+        pl.col(exit_col).cast(pl.Datetime("us"), strict=False).alias("timestamp")
+    ).drop_nulls()
     if entries.is_empty() or exits.is_empty():
         return None
 
-    all_dates = pl.date_range(entries.min(), exits.max(), eager=True)
-    counts = []
-    for d in all_dates:
-        n = trades.filter(
-            (pl.col(entry_col).cast(pl.Date, strict=False) <= d)
-            & (pl.col(exit_col).cast(pl.Date, strict=False) > d)
-        ).height
-        counts.append(n)
+    events = pl.concat(
+        [
+            entries.with_columns(
+                pl.lit(0, dtype=pl.Int8).alias("priority"),
+                pl.lit(1, dtype=pl.Int64).alias("delta"),
+            ),
+            exits.with_columns(
+                pl.lit(1, dtype=pl.Int8).alias("priority"),
+                pl.lit(-1, dtype=pl.Int64).alias("delta"),
+            ),
+        ],
+        how="vertical",
+    ).sort(["timestamp", "priority"])
+    events = events.with_columns(pl.col("delta").cum_sum().alias("open_positions"))
 
     theme_config = get_theme_config(ctx.theme)
     fig = go.Figure()
     fig.add_trace(
         go.Scatter(
-            x=all_dates.to_list(),
-            y=counts,
+            x=events["timestamp"].to_list(),
+            y=events["open_positions"].to_list(),
             mode="lines",
+            line_shape="hv",
             fill="tozeroy",
             line={"color": COLORS["slate"], "width": 1},
             fillcolor="rgba(26,45,74,0.15)",

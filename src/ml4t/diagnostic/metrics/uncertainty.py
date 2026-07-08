@@ -31,7 +31,7 @@ import pandas as pd
 import polars as pl
 from scipy import stats
 
-from ml4t.diagnostic.metrics.ic_inference import compute_ic_hac_stats
+from ml4t.diagnostic.metrics.ic_inference import _newey_west_lag, compute_ic_hac_stats
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -240,14 +240,6 @@ def _to_daily_array(
         arr = np.asarray(daily_series).flatten()
     arr = np.asarray(arr, dtype=np.float64).flatten()
     return arr[np.isfinite(arr)]
-
-
-def _newey_west_lag(n: int, horizon: int) -> int:
-    """HAC lag = max(horizon - 1, Newey-West auto), capped at n // 2."""
-    nw_auto = int(np.floor(4 * (max(n, 1) / 100) ** (2 / 9)))
-    nw_auto = max(1, nw_auto)
-    base = max(horizon - 1, nw_auto)
-    return max(1, min(base, max(1, n // 2)))
 
 
 def compute_ic_uncertainty(

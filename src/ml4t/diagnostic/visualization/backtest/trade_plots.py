@@ -95,6 +95,10 @@ def plot_mfe_mae_scatter(
 
     Notes
     -----
+    MFE is expected as a non-negative excursion in the same unit as MAE:
+    either decimal return from entry price or dollar PnL. MAE may be stored as
+    negative or positive; the plot uses its absolute magnitude.
+
     Quadrant Interpretation:
     - Q1 (MFE > |MAE|, PnL > 0): Healthy winners with controlled drawdown
     - Q2 (MFE < |MAE|, PnL > 0): Lucky winners that recovered from large drawdown
@@ -108,6 +112,27 @@ def plot_mfe_mae_scatter(
     mfe_raw = trades_df[mfe_col].to_numpy()
     mae_raw = np.abs(trades_df[mae_col].to_numpy())  # MAE as positive values
     pnl = trades_df["pnl"].to_numpy() if "pnl" in trades_df.columns else np.zeros(len(mfe_raw))
+
+    mfe_finite = np.isfinite(mfe_raw)
+    mae_finite = np.isfinite(mae_raw)
+    if (
+        not np.any(mfe_finite)
+        or not np.any(mae_finite)
+        or (
+            np.nanmax(np.abs(np.where(mfe_finite, mfe_raw, 0.0))) <= 0.0
+            and np.nanmax(np.where(mae_finite, mae_raw, 0.0)) <= 0.0
+        )
+    ):
+        return _empty_placeholder(
+            title="MFE vs MAE Analysis (Exit Efficiency)",
+            message=(
+                "MFE/MAE not available in trade data. Provide per-trade maximum "
+                "favorable and adverse excursions to render this chart."
+            ),
+            theme=theme,
+            height=height,
+            width=width,
+        )
 
     # Auto-detect scale: if max values exceed 2.0, data is in dollar terms, not fractions
     _max_val = max(np.nanmax(np.abs(mfe_raw)), np.nanmax(mae_raw), 1e-10)
@@ -368,7 +393,10 @@ def plot_mfe_mae_scatter(
 
     # Add edge ratio and exit efficiency annotation
     if show_edge_ratio:
-        edge_ratio = np.mean(mfe) / np.mean(mae) if np.mean(mae) > 0 else np.inf
+        mean_mfe = float(np.nanmean(mfe))
+        mean_mae = float(np.nanmean(mae))
+        edge_ratio = mean_mfe / mean_mae if mean_mae > 0 and np.isfinite(mean_mae) else np.nan
+        edge_ratio_text = f"{edge_ratio:.2f}" if np.isfinite(edge_ratio) else "n/a"
         # Exit efficiency = realised_return / mfe (both as fractions or both as dollars)
         if is_dollar:
             ret_arr = pnl
@@ -389,7 +417,9 @@ def plot_mfe_mae_scatter(
             y=0.98,
             xref="paper",
             yref="paper",
-            text=f"<b>Edge Ratio:</b> {edge_ratio:.2f}<br><b>Exit Efficiency:</b> {efficiency:.1%}",
+            text=(
+                f"<b>Edge Ratio:</b> {edge_ratio_text}<br><b>Exit Efficiency:</b> {efficiency:.1%}"
+            ),
             showarrow=False,
             font={"size": 12},
             align="left",
@@ -405,6 +435,35 @@ def plot_mfe_mae_scatter(
         yaxis={"tickformat": tick_fmt},
     )
 
+    return fig
+
+
+def _empty_placeholder(
+    *,
+    title: str,
+    message: str,
+    theme: str,
+    height: int,
+    width: int | None,
+) -> go.Figure:
+    fig = create_base_figure(
+        title=title,
+        height=height,
+        width=width,
+        theme=theme,
+    )
+    fig.add_annotation(
+        text=message,
+        xref="paper",
+        yref="paper",
+        x=0.5,
+        y=0.5,
+        showarrow=False,
+        align="center",
+        font={"size": 13, "color": _ML4T_COLORS["neutral"]},
+    )
+    fig.update_xaxes(visible=False)
+    fig.update_yaxes(visible=False)
     return fig
 
 

@@ -296,7 +296,7 @@ def analyze_feature_outcome(
 
     # 5. Compute HAC-adjusted significance (if requested)
     if include_hac:
-        hac_stats = compute_ic_hac_stats(ic_series=ic_series, ic_col="ic")
+        hac_stats = compute_ic_hac_stats(ic_series=ic_series, ic_col="ic", label_horizon=1)
     else:
         # Fallback to canonical non-HAC summary statistics.
         summary = compute_ic_summary_stats(ic_series=ic_series, ic_col="ic")

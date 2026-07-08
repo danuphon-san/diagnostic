@@ -1814,7 +1814,7 @@ requires-dist = [
     { name = "scipy", specifier = ">=1.10.0" },
     { name = "seaborn", marker = "extra == 'all'", specifier = ">=0.12.0" },
     { name = "seaborn", marker = "extra == 'viz'", specifier = ">=0.12.0" },
-    { name = "shap", specifier = ">=0.41.0,<0.52.0" },
+    { name = "shap", specifier = ">=0.41.0,<0.53.0" },
     { name = "statsmodels", specifier = ">=0.14.0" },
     { name = "streamlit", marker = "extra == 'all'", specifier = ">=1.28.0" },
     { name = "streamlit", marker = "extra == 'dashboard'", specifier = ">=1.28.0" },
